@@ -27,7 +27,7 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [ingredients, setIngredients] = useState([{ name: "", quantity: "" }]);
-  const [steps, setSteps] = useState([""]);
+  const [steps, setSteps] = useState([""]); // Ini akan selalu menjadi string[]
   const [uploading, setUploading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
@@ -53,24 +53,23 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
           setCurrentImageUrl(recipe.image_url || "");
           setIngredients(
             recipe.ingredients && recipe.ingredients.length > 0
-              ? recipe.ingredients
+              ? recipe.ingredients.map((ing) => ({
+                  name: ing.name,
+                  quantity: ing.quantity,
+                })) // Pastikan hanya ada name & quantity
               : [{ name: "", quantity: "" }]
           );
-          // Convert steps to array of strings if they're
-          // objects
+
+          // === PERBAIKAN DI SINI ===
+          // Ubah array of objects (dari API) menjadi array of strings (untuk state)
           let stepsArray = [""];
           if (recipe.steps && recipe.steps.length > 0) {
-            stepsArray = recipe.steps.map((step) => {
-              // If step is an object with a 'step'
-              // property, extract it
-              if (typeof step === "object" && step.step) {
-                return step.step;
-              }
-              // If step is already a string, use it
-              return typeof step === "string" ? step : "";
-            });
+            stepsArray = recipe.steps
+              .map((step) => step.instruction) // Ambil 'instruction'
+              .filter(Boolean); // Hapus jika ada yang null/undefined
           }
-          setSteps(stepsArray);
+          setSteps(stepsArray.length > 0 ? stepsArray : [""]);
+          // === AKHIR PERBAIKAN ===
         } else {
           throw new Error("Gagal memuat data resep");
         }
@@ -143,7 +142,7 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
     }
   };
 
-  // Handle step changes
+  // Handle step changes (state-nya sudah string[])
   const handleStepChange = (index, value) => {
     const newSteps = [...steps];
     newSteps[index] = value;
@@ -189,18 +188,7 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
       return false;
     }
     // Validate steps
-    const validSteps = steps.filter((step) => {
-      // Ensure step is a string before calling trim
-      if (typeof step === "string") {
-        return step.trim();
-      }
-      // If step is an object, check if it has a 'step'
-      // property
-      if (typeof step === "object" && step.step) {
-        return step.step.trim();
-      }
-      return false;
-    });
+    const validSteps = steps.filter((step) => step.trim());
     if (validSteps.length === 0) {
       setError("Minimal harus ada 1 langkah");
       return false;
@@ -208,8 +196,7 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
     return true;
   };
 
-  // Submit form (PATCH
-  // partial update)
+  // Submit form (PUT - full update)
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -218,55 +205,42 @@ export default function EditRecipePage({ recipeId, onBack, onSuccess }) {
     }
     try {
       setUpdating(true);
-      // Prepare update data
-      const updateData = {};
+      let finalImageUrl = currentImageUrl;
+
       // Step 1: Upload new image if selected
       if (imageFile) {
         setUploading(true);
         const uploadResult = await uploadService.uploadImage(imageFile);
         if (uploadResult.success) {
-          updateData.image_url = uploadResult.data.url;
+          finalImageUrl = uploadResult.data.url;
         } else {
-          throw new Error("Gagal upload gambar");
+          throw new Error("Gagal upload gambar baru");
         }
         setUploading(false);
-      } else if (!currentImageUrl && !imageFile) {
-        // If original image was removed and no new image
-        updateData.image_url = "";
       }
-      // Step 2: Add other fields
+
+      // Step 2: Prepare data
       const validIngredients = ingredients.filter(
         (ing) => ing.name.trim() && ing.quantity.trim()
       );
-      const validSteps = steps
-        .filter((step) => {
-          if (typeof step === "string") {
-            return step.trim();
-          }
-          if (typeof step === "object" && step.step) {
-            return step.step.trim();
-          }
-          return false;
-        })
-        .map((step) => {
-          // Convert to string if it's an object
-          if (typeof step === "object" && step.step) {
-            return step.step;
-          }
-          return step;
-        });
-      updateData.name = formData.name.trim();
-      updateData.category = formData.category;
-      updateData.description = formData.description.trim();
-      updateData.prep_time = parseInt(formData.prep_time);
-      updateData.cook_time = parseInt(formData.cook_time);
-      updateData.servings = parseInt(formData.servings);
-      updateData.difficulty = formData.difficulty;
-      updateData.is_featured = formData.is_featured;
-      updateData.ingredients = validIngredients;
-      updateData.steps = validSteps;
+      const validSteps = steps.filter((step) => step.trim());
+
+      const recipeData = {
+        name: formData.name.trim(),
+        category: formData.category,
+        description: formData.description.trim(),
+        image_url: finalImageUrl, // Gunakan URL final
+        prep_time: parseInt(formData.prep_time),
+        cook_time: parseInt(formData.cook_time),
+        servings: parseInt(formData.servings),
+        difficulty: formData.difficulty,
+        is_featured: formData.is_featured,
+        ingredients: validIngredients,
+        steps: validSteps, // Kirim sebagai string[]
+      };
+
       // Step 3: Update recipe using PUT
-      const result = await recipeService.updateRecipe(recipeId, updateData);
+      const result = await recipeService.updateRecipe(recipeId, recipeData);
       if (result.success) {
         alert("Resep berhasil diperbarui!");
         if (onSuccess) {

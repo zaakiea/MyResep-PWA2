@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { useRecipe } from "../../hooks/useRecipes";
 import { useReviews, useCreateReview } from "../../hooks/useReviews";
-import { useIsFavorited } from "../../hooks/useFavorites";
 import { getUserIdentifier } from "../../hooks/useFavorites";
+import userService from "../../services/userService"; // Import userService
 import {
   formatDate,
   getDifficultyColor,
@@ -11,7 +11,6 @@ import {
 } from "../../utils/helpers";
 import {
   ArrowLeft,
-  Heart,
   Clock,
   Users,
   ChefHat,
@@ -19,11 +18,13 @@ import {
   Send,
   Edit,
   Trash2,
+  Loader, // Tambahkan Loader
 } from "lucide-react";
 import recipeService from "../../services/recipeService";
 import ConfirmModal from "../modals/ConfirmModal";
 import FavoriteButton from "../common/FavoriteButton";
-import userService from "../../services/userService";
+import ShareButton from "../common/ShareButton"; // <-- 1. IMPORT SHARE BUTTON
+
 export default function RecipeDetail({
   recipeId,
   onBack,
@@ -34,6 +35,7 @@ export default function RecipeDetail({
     recipe,
     loading: recipeLoading,
     error: recipeError,
+    refetch: refetchRecipe, // Dapatkan refetch
   } = useRecipe(recipeId);
   const {
     reviews,
@@ -41,16 +43,13 @@ export default function RecipeDetail({
     refetch: refetchReviews,
   } = useReviews(recipeId);
   const { createReview, loading: createLoading } = useCreateReview();
-  const {
-    isFavorited,
-    loading: favLoading,
-    toggleFavorite,
-  } = useIsFavorited(recipeId);
+
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const categoryColors = {
     makanan: {
       primary: "blue",
@@ -71,7 +70,8 @@ export default function RecipeDetail({
       ring: "ring-green-500",
     },
   };
-  const colors = categoryColors[category] || categoryColors.makanan;
+  const colors = categoryColors[recipe?.category] || categoryColors.makanan;
+
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     // Get username from user profile
@@ -86,12 +86,11 @@ export default function RecipeDetail({
       setComment("");
       setRating(5);
       setShowReviewForm(false);
-      refetchReviews();
+      refetchReviews(); // Refetch review
+      refetchRecipe(); // Refetch resep (untuk update average_rating)
     }
   };
-  const handleToggleFavorite = async () => {
-    await toggleFavorite();
-  };
+
   const handleDeleteRecipe = async () => {
     try {
       setDeleting(true);
@@ -116,14 +115,15 @@ export default function RecipeDetail({
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div
-            className={`animate-spin rounded-full h-12 w-12 border-b-2 border-${colors.primary}-600 mx-auto`}
-          ></div>
+          <Loader // Ganti div dengan Loader
+            className={`animate-spin h-12 w-12 text-${colors.primary}-600 mx-auto`}
+          />
           <p className="mt-4 text-slate-600">Memuat resep...</p>
         </div>
       </div>
     );
   }
+
   if (recipeError) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -142,6 +142,7 @@ export default function RecipeDetail({
       </div>
     );
   }
+
   if (!recipe) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -157,6 +158,7 @@ export default function RecipeDetail({
       </div>
     );
   }
+
   return (
     <div
       className={`min-h-screen bg-gradient-to-br ${colors.gradient} pb-20 md:pb-8`}
@@ -184,29 +186,33 @@ export default function RecipeDetail({
             <span className="font-medium">Kembali</span>
           </button>
           {/* Action Buttons */}
-          {onEdit && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  console.log("Edit button clicked in RecipeDetail");
-                  console.log("Recipe ID:", recipeId);
-                  console.log("onEdit function:", onEdit);
-                  onEdit(recipeId);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Edit className="w-4 h-4" />
-                <span className="hidden md:inline">Edit</span>
-              </button>
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden md:inline">Hapus</span>
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            {/* <-- 2. TAMBAHKAN SHARE BUTTON DI SINI --> */}
+            <ShareButton recipeId={recipe.id} recipeName={recipe.name} />
+            {onEdit && (
+              <>
+                <button
+                  onClick={() => {
+                    console.log("Edit button clicked in RecipeDetail");
+                    console.log("Recipe ID:", recipeId);
+                    console.log("onEdit function:", onEdit);
+                    onEdit(recipeId);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  <span className="hidden md:inline">Edit</span>
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden md:inline">Hapus</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
       <main className="max-w-5xl mx-auto px-4 py-8">
@@ -222,14 +228,14 @@ export default function RecipeDetail({
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             {/* Favorite Button Use component */}
             <div className="absolute top-4 right-4 z-10">
-              <FavoriteButton recipeId={recipeId} size="lg" />
+              <FavoriteButton recipeId={recipe.id} size="lg" />
             </div>
             {/* Category Badge */}
             <div className="absolute bottom-4 left-4">
               <span
                 className={`${colors.text} ${colors.bg} px-4 py-2 rounded-full text-sm font-semibold`}
               >
-                {category === "makanan" ? "Makanan" : "Minuman"}
+                {recipe.category === "makanan" ? "Makanan" : "Minuman"}
               </span>
             </div>
           </div>
@@ -318,11 +324,6 @@ export default function RecipeDetail({
           {/* Ingredients */}
           <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-6 md:p-8 shadow-xl border border-white/40">
             <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-full bg-${colors.primary}-100 flex items-center justify-center`}
-              >
-                <span className={`text-${colors.primary}-600 text-xl`}></span>
-              </div>
               Bahan-bahan
             </h2>
             <ul className="space-y-3">
@@ -331,7 +332,9 @@ export default function RecipeDetail({
                   key={ingredient.id}
                   className="flex items-start gap-3 bg-white/50 p-3 rounded-xl border border-white/60"
                 >
-                  <span className={`text-${colors.primary}-600 mt-1`}></span>
+                  <span className={`text-${colors.primary}-600 mt-1 font-bold`}>
+                    •
+                  </span>
                   <div>
                     <p className="font-medium text-slate-700">
                       {ingredient.name}
@@ -347,11 +350,6 @@ export default function RecipeDetail({
           {/* Steps */}
           <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-6 md:p-8 shadow-xl border border-white/40">
             <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-full bg-${colors.primary}-100 flex items-center justify-center`}
-              >
-                <span className={`text-${colors.primary}-600 text-xl`}></span>
-              </div>
               Langkah-langkah
             </h2>
             <ol className="space-y-4">
